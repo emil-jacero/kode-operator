@@ -59,8 +59,9 @@ spec:
   tz: UTC
   defaultHome: /config
   defaultWorkspace: workspace
-  envoyProxyTemplateRef:
+  envoyProxyRef:
     name: my-envoy-proxy-template
+    namespace: default
 ```
 
 **Example for KodeClusterTemplate:**
@@ -76,15 +77,50 @@ spec:
   tz: UTC
   defaultHome: /config
   defaultWorkspace: workspace
-  envoyProxyTemplateRef:
-    name: my-envoy-proxy-template
 ```
 
-### EnvoyProxyTemplate & ClusterEnvoyProxyTemplate
+### EnvoyProxyConfig & EnvoyProxyClusterConfig
 
 These are cluster scoped and namespace scoped template for the Envoy Proxy sidecar. A way to define a standard Envoy Proxy configuration that a Kode template should use. This could be a HTTP filter to an Open Policy Agent (OPA) deployment within the cluster.
 
 ```yaml
+apiVersion: kode.jacero.io/v1alpha1
+kind: EnvoyProxyConfig
+metadata:
+  labels:
+    app.kubernetes.io/name: kode-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: my-envoy-proxy-template
+  namespace: default
+spec:
+  image: envoyproxy/envoy:v1.30-latest
+  httpFilters:
+    - name: envoy.filters.http.ext_authz
+      typed_config:
+        '@type': type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+        with_request_body:
+          max_request_bytes: 8192
+          allow_partial_message: true
+        failure_mode_allow: false
+        grpc_service:
+          envoy_grpc:
+            cluster_name: ext_authz-opa-service1
+          timeout: 0.250s
+        transport_api_version: V3
+  clusters:
+    - name: ext_authz-opa-service1
+      connect_timeout: 0.250s
+      lb_policy: round_robin
+      type: strict_dns
+      load_assignment:
+        cluster_name: ext_authz-opa-service1
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: opa.default.svc.cluster.local
+                      port_value: 8181
 ```
 
 ### Features
@@ -92,14 +128,15 @@ These are cluster scoped and namespace scoped template for the Envoy Proxy sidec
 - [x] *Provisioning and update of [Code-server](https://docs.linuxserver.io/images/docker-code-server/).
 - [ ] *Provisioning and update of [Webtop](https://docs.linuxserver.io/images/docker-webtop/).
 - [ ] Authentication & Authorization support using Envoy Proxy sidecar.
-  - [ ] [OAuth2](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/oauth2_filter) With external Oauth2 provider.
-  - [ ] [Basic Auth](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/basic_auth_filter.html#basic-auth) Use password from Kode.password or Kode.existingSecret.
-  - [ ] [Ext_Authz](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_authz_filter) HTTP and GRPC (Used by for example OPA).
-- [ ] Ability to add VSCode Extensions to the KodeTemplate and as a user.
-- [ ] Ability to add "preinstalled" software to the KodeTemplate.
+  - [OAuth2](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/oauth2_filter) With external Oauth2 provider.
+  - [Ext_Authz](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_authz_filter) HTTP and GRPC (Used by for example OPA to authorize the users).
+- [ ] [Falco](https://falco.org/) sidecar support
+- [ ] Kode instance bound to the user identity and namespaced for isolation, an identity provided by an IAM (e.g Keycloak).
+- [x] Ability to include InitPlugins which are executed in order. InitPlugins can mutate the instance in any way the administrator or user like.
+  - Could for example add VSCode extensions or install software that is not built into the image.
 - [ ] Include dotfiles and other user settings in the Kode instance.
 - [ ] Pause/Prune container on inactivity, keeping the persistent storage.
-  - [ ] Backup & Restore of user stage. Maybe not feasible.
+  - [ ] Backup & restore of the Kode instance state. Maybe not feasible.
 - [ ] Backup & Restore of user data to S3.
 - [ ] A Kode CLI to manage Kode resources
 
@@ -119,7 +156,6 @@ metadata:
 spec:
   type: code-server
   image: linuxserver/code-server:latest
-  port: 3000
   defaultHome: /config
   defaultWorkspace: workspace
 ```
@@ -159,8 +195,7 @@ kind: EnvoyProxyClusterConfig
 metadata:
   name: basic-auth-proxy
 spec:
-  auth:
-    type: basic-auth
+  authType: basic
 ```
 
 **2. Create a KodeTemplate with Envoy Proxy Configuration:**

@@ -41,6 +41,11 @@ spec:
             description: EnvoyProxyClusterConfigSpec defines the desired state of
               EnvoyProxyClusterConfig
             properties:
+              authType:
+                description: AuthType is the type of authentication to use
+                enum:
+                - basic
+                type: string
               clusters:
                 description: Clusters is a list of Envoy clusters
                 items:
@@ -154,7 +159,6 @@ spec:
                 minLength: 1
                 type: string
             required:
-            - httpFilters
             - image
             type: object
           status:

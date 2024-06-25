@@ -11,10 +11,7 @@ import (
 
 // mask function to mask sensitive values
 func mask(s string) string {
-	if len(s) > 6 {
-		return s[:2] + "******" + s[len(s)-2:]
-	}
-	return "****"
+	return "******"
 }
 
 // maskEnvs function to mask sensitive environment variables
@@ -37,9 +34,13 @@ func logKodeManifest(log logr.Logger, kode *kodev1alpha1.Kode) {
 		"TemplateRef", kode.Spec.TemplateRef,
 		"User", kode.Spec.User,
 		"Password", mask(kode.Spec.Password),
+		"ExistingSecret", kode.Spec.ExistingSecret,
+		"Storage", fmt.Sprintf("%v", kode.Spec.Storage),
 		"Home", kode.Spec.Home,
 		"Workspace", kode.Spec.Workspace,
-		"Storage", fmt.Sprintf("%v", kode.Spec.Storage),
+		"UserConfig", kode.Spec.UserConfig,
+		"Privileged", *kode.Spec.Privileged,
+		"InitPlugins", fmt.Sprintf("%v", kode.Spec.InitPlugins),
 	)
 }
 
@@ -58,6 +59,10 @@ func logSharedKodeTemplateManifest(log logr.Logger, name string, namespace strin
 		"Args", fmt.Sprintf("%v", spec.Args),
 		"Home", spec.DefaultHome,
 		"DefaultWorkspace", spec.DefaultWorkspace,
+		"AllowPrivileged", spec.AllowPrivileged,
+		"InitPlugins", fmt.Sprintf("%v", spec.InitPlugins),
+		"InactiveAfterSeconds", spec.InactiveAfterSeconds,
+		"RecycleAfterSeconds", spec.RecycleAfterSeconds,
 	)
 }
 
@@ -67,7 +72,9 @@ func logSharedEnvoyProxyTemplateManifest(log logr.Logger, name string, namespace
 		"Name", name,
 		"Namespace", namespace,
 		"Image", spec.Image,
+		"AuthType", spec.AuthType,
 		"HTTPFilters", fmt.Sprintf("%v", spec.HTTPFilters),
+		"Clusters", fmt.Sprintf("%v", spec.Clusters),
 	)
 }
 

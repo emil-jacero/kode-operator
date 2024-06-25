@@ -62,34 +62,6 @@ spec:
                 minLength: 3
                 pattern: ^[^/].*$
                 type: string
-              entryPointSpec:
-                description: EntryPointSpec defines the desired state of the entrypoint.
-                properties:
-                  apiType:
-                    description: Type is the type of the gateway. It could be ingress-api
-                      or gateway-api.
-                    enum:
-                    - ingress-api
-                    - gateway-api
-                    type: string
-                  type:
-                    description: Type is the way the Kode resource is accessed. It could
-                      be subdomain or path.
-                    enum:
-                    - domain
-                    - path
-                    type: string
-                  url:
-                    description: |-
-                      URL is the domain name to use either as a suffix in the case of Type=domain or as a prefix/domain in the case of Type=path.
-                      When the type is domain, the controller will try to publish the Kode resource as a subdomain of the given domain (e.g <kode-resource>.kode.example.com).
-                      When the type is path, the controller will try to publish the Kode resource as a path of the given URL (e.g kode.example.com/<kode-resource>).
-                    type: string
-                required:
-                - apiType
-                - type
-                - url
-                type: object
               envoyProxyRef:
                 description: EnvoyProxyRef is the reference to the EnvoyProxy configuration
                 properties:
@@ -384,11 +356,12 @@ spec:
                     image:
                       description: Image is the OCI image for the container
                       type: string
-                    tag:
-                      description: Tag is the tag of the OCI image
+                    name:
+                      description: Name is the name of the container
                       type: string
                   required:
                   - image
+                  - name
                   type: object
                 type: array
               pgid:
@@ -397,9 +370,10 @@ spec:
                 format: int64
                 type: integer
               port:
-                default: 3000
+                default: 8000
                 description: Port is the port for the service process. Used by EnvoyProxy
-                  to expose the service.
+                  to expose the service. Do not set to 3000 or the container will not
+                  be able to bind to the port.
                 format: int32
                 minimum: 1
                 type: integer

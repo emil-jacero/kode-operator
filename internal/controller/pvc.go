@@ -29,14 +29,14 @@ import (
 )
 
 // ensurePVC ensures that the PersistentVolumeClaim exists for the Kode instance
-func (r *KodeReconciler) ensurePVC(ctx context.Context, kode *kodev1alpha1.Kode) (*corev1.PersistentVolumeClaim, error) {
+func (r *KodeReconciler) ensurePVC(ctx context.Context, kode *kodev1alpha1.Kode) (controllerutil.OperationResult, *corev1.PersistentVolumeClaim, error) {
 	log := r.Log.WithName("ensurePVC")
 
 	log.Info("Ensuring PVC exists", "Namespace", kode.Namespace, "Name", kode.Name)
 
 	pvc := r.constructPVC(kode)
 	if err := controllerutil.SetControllerReference(kode, pvc, r.Scheme); err != nil {
-		return nil, err
+		return controllerutil.OperationResultNone, nil, err
 	}
 
 	found := &corev1.PersistentVolumeClaim{}
@@ -45,11 +45,11 @@ func (r *KodeReconciler) ensurePVC(ctx context.Context, kode *kodev1alpha1.Kode)
 		if errors.IsNotFound(err) {
 			log.Info("Creating a new PVC", "Namespace", pvc.Namespace, "Name", pvc.Name)
 			if err := r.Create(ctx, pvc); err != nil {
-				return nil, err
+				return controllerutil.OperationResultNone, nil, err
 			}
-			return pvc, nil
+			return controllerutil.OperationResultCreated, pvc, nil
 		}
-		return nil, err
+		return controllerutil.OperationResultNone, nil, err
 	}
 
 	// Only update mutable fields: Resources.Requests
@@ -57,13 +57,14 @@ func (r *KodeReconciler) ensurePVC(ctx context.Context, kode *kodev1alpha1.Kode)
 		found.Spec.Resources.Requests = pvc.Spec.Resources.Requests
 		log.Info("Updating existing PVC resources", "Namespace", found.Namespace, "Name", found.Name)
 		if err := r.Update(ctx, found); err != nil {
-			return nil, err
+			return controllerutil.OperationResultNone, nil, err
 		}
+		return controllerutil.OperationResultUpdated, found, nil
 	} else {
 		log.Info("PVC is up-to-date", "Namespace", found.Namespace, "Name", found.Name)
 	}
 
-	return found, nil
+	return controllerutil.OperationResultNone, found, nil
 }
 
 // constructPVC constructs a PersistentVolumeClaim for the Kode instance

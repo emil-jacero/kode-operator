@@ -191,11 +191,12 @@ spec:
                     image:
                       description: Image is the OCI image for the container
                       type: string
-                    tag:
-                      description: Tag is the tag of the OCI image
+                    name:
+                      description: Name is the name of the container
                       type: string
                   required:
                   - image
+                  - name
                   type: object
                 type: array
               password:

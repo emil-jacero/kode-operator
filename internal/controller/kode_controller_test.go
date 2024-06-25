@@ -234,6 +234,7 @@ var _ = Describe("Kode Controller", func() {
 						},
 						Image: kodeTemplateImage,
 						Type:  "code-server",
+						Port:  8000,
 					},
 				},
 			}
@@ -311,7 +312,7 @@ var _ = Describe("Kode Controller", func() {
 			}, timeout, interval).Should(Succeed())
 
 			Expect(service.Spec.Ports).To(HaveLen(1))
-			Expect(service.Spec.Ports[0].Port).To(Equal(int32(3000)))
+			Expect(service.Spec.Ports[0].Port).To(Equal(int32(8000)))
 		})
 
 		// // TODO: Fix validation. It should find the created PVC

@@ -26,38 +26,6 @@ package bootstrap
     typed_config: "@type": "type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog"
 }]
 
-// #ExtAuthzOPAServiceFilter: #HTTPFilter & {
-//     name: "envoy.filters.http.ext_authz"
-//     typed_config: {
-//         "@type": "type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz"
-//         with_request_body: {
-//             max_request_bytes:     8192
-//             allow_partial_message: true
-//         }
-//         failure_mode_allow: false
-//         grpc_service: {
-//             envoy_grpc: cluster_name: #ExtAuthzOPAService.load_assignment.cluster_name
-//             timeout: "0.250s"
-//         }
-//         transport_api_version: "V3"
-//     }
-// }
-
-// #ExtAuthzOPAService: #Cluster & {
-//     name:      "ext_authz-opa-service"
-//     load_assignment: {
-//         cluster_name: "ext_authz-opa-service"
-//         endpoints: [{
-//             lb_endpoints: [{endpoint: {
-//                 address: { socket_address: {
-//                     address: "ext_authz-http-service"
-//                     port_value: 8181
-//                 }}}
-//             }]
-//         }]
-//     }
-// }
-
 #LocalServiceCluster: #Cluster & {
     name:      "local_service_cluster"
     load_assignment: {
@@ -65,7 +33,7 @@ package bootstrap
         endpoints: [{
             lb_endpoints: [{endpoint: {
                 address: { socket_address: {
-                    address: "local_service"
+                    address: "127.0.0.1"
                     port_value: #GoLocalServicePort
                 }}}
             }]
@@ -77,7 +45,7 @@ package bootstrap
     name: "listener_0"
     address: #Address & { socket_address: {
         address: "0.0.0.0"
-        port_value: 8000
+        port_value: #GoExposePort
         }
     }
     filter_chains: [{
@@ -107,8 +75,9 @@ package bootstrap
     }]
 }
 
-// Define go types
+// Define go values that should be used in the bootstrap config
 #GoLocalServicePort: #Port | *3000
+#GoExposePort: #Port | *8000
 #GoHttpFilters: [...#HTTPFilter]
 #GoClusters: [...#Cluster]
 

@@ -5,12 +5,12 @@ resources:
 
 - kode_v1alpha1_kodetemplate_codeserver.yaml
 # - kode_v1alpha1_kodetemplate_webtop.yaml
-
 # - kode_v1alpha1_kodeclustertemplate_codeserver.yaml
 # - kode_v1alpha1_kodeclustertemplate_webtop.yaml
 
-- kode_v1alpha1_envoyproxyconfig.yaml
+# - kode_v1alpha1_envoyproxyconfig.yaml
+- kode_v1alpha1_envoyproxyconfig_basic-auth.yaml
 # - kode_v1alpha1_envoyproxyclusterconfig.yaml
 
-- kode_v1alpha1_entrypoint.yaml
+# - kode_v1alpha1_entrypoint.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

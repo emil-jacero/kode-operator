@@ -39,10 +39,10 @@ type SharedKodeTemplateSpec struct {
 	// +kubebuilder:validation:Required
 	Image string `json:"image"`
 
-	// Port is the port for the service process. Used by EnvoyProxy to expose the service.
-	// +kubebuilder:validation:Description="Port for the service process. Used by EnvoyProxy to expose the service. Defaults to '3000'."
+	// Port is the port for the service process. Used by EnvoyProxy to expose the service. Do not set to 3000 or the container will not be able to bind to the port.
+	// +kubebuilder:validation:Description="Port for the service process. Used by EnvoyProxy to expose the service. Do not set to 3000 or the container will not be able to bind to the port. Defaults to '8000'."
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:default=3000
+	// +kubebuilder:default=8000
 	Port int32 `json:"port,omitempty"`
 
 	// Specifies the envs

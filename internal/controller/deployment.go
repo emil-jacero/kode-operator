@@ -25,10 +25,7 @@ import (
 	kodev1alpha1 "github.com/emil-jacero/kode-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -37,48 +34,41 @@ func (r *KodeReconciler) ensureDeployment(ctx context.Context,
 	kode *kodev1alpha1.Kode,
 	labels map[string]string,
 	sharedKodeTemplateSpec *kodev1alpha1.SharedKodeTemplateSpec,
-	sharedEnvoyProxyConfigSpec *kodev1alpha1.SharedEnvoyProxyConfigSpec) error {
+	sharedEnvoyProxyConfigSpec *kodev1alpha1.SharedEnvoyProxyConfigSpec,
+	templateVersion string,
+	proxyConfigVersion string,
+	username string,
+	password string) error {
 
 	log := r.Log.WithName("ensureDeployment")
 
 	log.Info("Ensuring Deployment exists", "Namespace", kode.Namespace, "Name", kode.Name)
 
-	deployment := r.constructDeployment(kode, labels, sharedKodeTemplateSpec, sharedEnvoyProxyConfigSpec)
+	deployment := r.constructDeployment(kode, labels, sharedKodeTemplateSpec, sharedEnvoyProxyConfigSpec, username, password)
 	if err := controllerutil.SetControllerReference(kode, deployment, r.Scheme); err != nil {
 		return err
 	}
 
-	found := &appsv1.Deployment{}
-	err := r.Get(ctx, types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, found)
+	// Use controllerutil.CreateOrUpdate for idempotency
+	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, deployment, func() error {
+		// Update deployment spec to ensure correct state
+		found := deployment.DeepCopy()
+		found.Spec = deployment.Spec
+
+		// Update annotations with the latest resource versions
+		if found.Annotations == nil {
+			found.Annotations = map[string]string{}
+		}
+		found.Annotations["kode-template.version"] = templateVersion
+		found.Annotations["envoy-proxy-config.version"] = proxyConfigVersion
+
+		return nil
+	})
 	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Info("Creating Deployment", "Namespace", deployment.Namespace, "Name", deployment.Name)
-			if err := r.Create(ctx, deployment); err != nil {
-				log.Error(err, "Failed to create Deployment", "Namespace", deployment.Namespace, "Name", deployment.Name)
-				return err
-			}
-			log.Info("Deployment created", "Namespace", deployment.Namespace, "Name", deployment.Name)
-		} else {
-			log.Error(err, "Failed to get Deployment", "Namespace", deployment.Namespace, "Name", deployment.Name)
-			return err
-		}
-	} else if !reflect.DeepEqual(deployment.Spec, found.Spec) {
-		retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			if err := r.Get(ctx, types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, found); err != nil {
-				return err
-			}
-			found.Spec = deployment.Spec
-			log.Info("Updating Deployment due to spec change", "Namespace", found.Namespace, "Name", found.Name)
-			return r.Update(ctx, found)
-		})
-
-		if retryErr != nil {
-			log.Error(retryErr, "Failed to update Deployment after retrying", "Namespace", deployment.Namespace, "Name", deployment.Name)
-			return retryErr
-		}
+		log.Error(err, "Failed to create or update Deployment", "Namespace", deployment.Namespace, "Name", deployment.Name)
+		return err
 	}
-
-	log.Info("Successfully ensured Deployment", "Namespace", kode.Namespace, "Name", kode.Name)
+	log.Info("Deployment ensured", "operation", op, "Namespace", deployment.Namespace, "Name", deployment.Name)
 	return nil
 }
 
@@ -86,8 +76,9 @@ func (r *KodeReconciler) ensureDeployment(ctx context.Context,
 func (r *KodeReconciler) constructDeployment(kode *kodev1alpha1.Kode,
 	labels map[string]string,
 	templateSpec *kodev1alpha1.SharedKodeTemplateSpec,
-	sharedEnvoyProxyConfigSpec *kodev1alpha1.SharedEnvoyProxyConfigSpec) *appsv1.Deployment {
-
+	sharedEnvoyProxyConfigSpec *kodev1alpha1.SharedEnvoyProxyConfigSpec,
+	username string,
+	password string) *appsv1.Deployment {
 	log := r.Log.WithName("constructDeployment")
 
 	replicas := int32(1)
@@ -110,9 +101,15 @@ func (r *KodeReconciler) constructDeployment(kode *kodev1alpha1.Kode,
 	var initContainers []corev1.Container
 
 	if templateSpec.Type == "code-server" {
-		containers = constructCodeServerContainers(kode, templateSpec, workspace)
+		containers = constructCodeServerContainers(kode, templateSpec, workspace, username, password, templateSpec.EnvoyProxyRef.Name != "")
 	} else if templateSpec.Type == "webtop" {
-		containers = constructWebtopContainers(kode, templateSpec)
+		containers = constructWebtopContainers(kode, templateSpec, username, password, templateSpec.EnvoyProxyRef.Name != "")
+	}
+
+	// Append additional Envs and Args to the main container
+	if len(containers) > 0 {
+		containers[0].Env = append(containers[0].Env, templateSpec.Envs...)
+		containers[0].Args = append(containers[0].Args, templateSpec.Args...)
 	}
 
 	volumes, volumeMounts := constructVolumesAndMounts(mountPath, kode)
@@ -120,12 +117,14 @@ func (r *KodeReconciler) constructDeployment(kode *kodev1alpha1.Kode,
 
 	if templateSpec.EnvoyProxyRef.Name != "" {
 		log.Info("EnvoyProxyRef is defined", "Namespace", kode.Namespace, "Kode", kode.Name, "Name", templateSpec.EnvoyProxyRef.Name)
-		envoySidecarContainer, envoyInitContainer, err := constructEnvoyProxyContainer(log, templateSpec, sharedEnvoyProxyConfigSpec)
+		envoySidecarContainer, envoyInitContainers, err := constructEnvoyProxyContainer(log, templateSpec, sharedEnvoyProxyConfigSpec, username, password)
 		if err != nil {
 			log.Error(err, "Failed to construct EnvoyProxy sidecar", "Kode", kode.Name, "Container", templateSpec.EnvoyProxyRef.Name, "Error", err)
 		} else {
 			containers = append(containers, envoySidecarContainer)
-			initContainers = append(initContainers, envoyInitContainer)
+			for _, initContainer := range envoyInitContainers {
+				initContainers = append(initContainers, initContainer)
+			}
 			log.Info("Added EnvoyProxy sidecar container and init container", "Kode", kode.Name, "Container", envoySidecarContainer.Name)
 		}
 	}
@@ -165,46 +164,80 @@ func (r *KodeReconciler) constructDeployment(kode *kodev1alpha1.Kode,
 
 func constructCodeServerContainers(kode *kodev1alpha1.Kode,
 	templateSpec *kodev1alpha1.SharedKodeTemplateSpec,
-	workspace string) []corev1.Container {
+	workspace string,
+	username string,
+	password string,
+	envoyProxyEnabled bool) []corev1.Container {
 
-	return []corev1.Container{{
+	// If not envoyProxyEnabled, the servicePort will be the same as the template port
+	// This is because the Envoy Proxy will be listening on the template port
+	var servicePort int32
+	servicePort = InternalServicePort
+	if !envoyProxyEnabled {
+		servicePort = templateSpec.Port
+	}
+
+	container := corev1.Container{
 		Name:  "kode-" + kode.Name,
 		Image: templateSpec.Image,
 		Env: []corev1.EnvVar{
-			{Name: "PORT", Value: fmt.Sprintf("%d", templateSpec.Port)},
 			{Name: "PUID", Value: fmt.Sprintf("%d", templateSpec.PUID)},
 			{Name: "PGID", Value: fmt.Sprintf("%d", templateSpec.PGID)},
 			{Name: "TZ", Value: templateSpec.TZ},
+			{Name: "PORT", Value: fmt.Sprintf("%d", servicePort)},
 			{Name: "USERNAME", Value: kode.Spec.User},
-			{Name: "PASSWORD", Value: kode.Spec.Password},
+			// {Name: "PASSWORD", Value: kode.Spec.Password}, // Don't need to set password
 			{Name: "DEFAULT_WORKSPACE", Value: workspace},
 		},
-		Ports: []corev1.ContainerPort{{
+	}
+
+	// Add port only if Envoy Proxy is not enabled
+	if !envoyProxyEnabled {
+		container.Ports = []corev1.ContainerPort{{
 			Name:          "http",
-			ContainerPort: templateSpec.Port,
-		}},
-	}}
+			ContainerPort: servicePort,
+		}}
+	}
+
+	return []corev1.Container{container}
 }
 
 func constructWebtopContainers(kode *kodev1alpha1.Kode,
-	templateSpec *kodev1alpha1.SharedKodeTemplateSpec) []corev1.Container {
+	templateSpec *kodev1alpha1.SharedKodeTemplateSpec,
+	username string,
+	password string,
+	envoyProxyEnabled bool) []corev1.Container {
 
-	return []corev1.Container{{
+	// If not envoyProxyEnabled, the servicePort will be the same as the template port
+	// This is because the Envoy Proxy will be listening on the template port
+	var servicePort int32
+	servicePort = InternalServicePort
+	if !envoyProxyEnabled {
+		servicePort = templateSpec.Port
+	}
+
+	container := corev1.Container{
 		Name:  "kode-" + kode.Name,
 		Image: templateSpec.Image,
 		Env: []corev1.EnvVar{
 			{Name: "PUID", Value: fmt.Sprintf("%d", templateSpec.PUID)},
 			{Name: "PGID", Value: fmt.Sprintf("%d", templateSpec.PGID)},
 			{Name: "TZ", Value: templateSpec.TZ},
-			{Name: "CUSTOM_PORT", Value: fmt.Sprintf("%d", templateSpec.Port)},
+			{Name: "CUSTOM_PORT", Value: fmt.Sprintf("%d", servicePort)},
 			{Name: "CUSTOM_USER", Value: kode.Spec.User},
-			{Name: "PASSWORD", Value: kode.Spec.Password},
+			// {Name: "PASSWORD", Value: kode.Spec.Password}, // Don't need to set password
 		},
-		Ports: []corev1.ContainerPort{{
+	}
+
+	// Add port only if Envoy Proxy is not enabled
+	if !envoyProxyEnabled {
+		container.Ports = []corev1.ContainerPort{{
 			Name:          "http",
-			ContainerPort: templateSpec.Port,
-		}},
-	}}
+			ContainerPort: servicePort,
+		}}
+	}
+
+	return []corev1.Container{container}
 }
 
 func constructVolumesAndMounts(mountPath string, kode *kodev1alpha1.Kode) ([]corev1.Volume, []corev1.VolumeMount) {
@@ -236,7 +269,7 @@ func constructVolumesAndMounts(mountPath string, kode *kodev1alpha1.Kode) ([]cor
 
 func constructInitPluginContainer(plugin kodev1alpha1.InitPluginSpec) corev1.Container {
 	return corev1.Container{
-		Name:    "init-" + plugin.Image,
+		Name:    "init-plugin-" + plugin.Name,
 		Image:   plugin.Image,
 		Command: plugin.Command,
 		Args:    plugin.Args,

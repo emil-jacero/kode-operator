@@ -41,6 +41,10 @@ type KodeSpec struct {
 	// +kubebuilder:validation:Description="ExistingSecret is a reference to an existing secret containing user and password. If set, User and Password fields are ignored."
 	ExistingSecret string `json:"existingSecret,omitempty"`
 
+	// Storage specifies the storage configuration
+	// +kubebuilder:validation:Description="Storage configuration."
+	Storage KodeStorageSpec `json:"storage,omitempty"`
+
 	// Home is the path to the directory for the user data
 	// +kubebuilder:validation:Description="Home is the path to the directory for the user data. Defaults to '/config'."
 	// +kubebuilder:validation:MinLength=3
@@ -52,10 +56,6 @@ type KodeSpec struct {
 	// +kubebuilder:validation:MinLength=3
 	// +kubebuilder:validation:Pattern="^[^/].*$"
 	Workspace string `json:"workspace,omitempty"`
-
-	// Storage specifies the storage configuration
-	// +kubebuilder:validation:Description="Storage configuration."
-	Storage KodeStorageSpec `json:"storage,omitempty"`
 
 	// UserConfig specifies a git repository URL to get user configuration from
 	// +kubebuilder:validation:Description="Git repository URL to get user configuration from."
@@ -167,14 +167,15 @@ type KodeTemplateReference struct {
 }
 
 type InitPluginSpec struct {
+	// Name is the name of the container
+	// +kubebuilder:validation:Description="Name of the container."
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
 	// Image is the OCI image for the container
 	// +kubebuilder:validation:Description="OCI image for the container."
 	// +kubebuilder:validation:Required
 	Image string `json:"image"`
-
-	// Tag is the tag of the OCI image
-	// +kubebuilder:validation:Description="Tag of the OCI image."
-	Tag string `json:"tag,omitempty"`
 
 	// Args are the arguments to the container
 	// +kubebuilder:validation:Description="Arguments to the container."

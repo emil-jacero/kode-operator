@@ -355,11 +355,12 @@ spec:
                     image:
                       description: Image is the OCI image for the container
                       type: string
-                    tag:
-                      description: Tag is the tag of the OCI image
+                    name:
+                      description: Name is the name of the container
                       type: string
                   required:
                   - image
+                  - name
                   type: object
                 type: array
               pgid:
@@ -368,9 +369,10 @@ spec:
                 format: int64
                 type: integer
               port:
-                default: 3000
+                default: 8000
                 description: Port is the port for the service process. Used by EnvoyProxy
-                  to expose the service.
+                  to expose the service. Do not set to 3000 or the container will
+                  not be able to bind to the port.
                 format: int32
                 minimum: 1
                 type: integer

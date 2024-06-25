@@ -18,13 +18,10 @@ package controller
 
 import (
 	"context"
-	"reflect"
 
 	kodev1alpha1 "github.com/emil-jacero/kode-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -42,29 +39,22 @@ func (r *KodeReconciler) ensureService(ctx context.Context, kode *kodev1alpha1.K
 		return err
 	}
 
-	found := &corev1.Service{}
-	err := r.Get(ctx, types.NamespacedName{Name: service.Name, Namespace: service.Namespace}, found)
+	// Use controllerutil.CreateOrUpdate for idempotency
+	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {
+		// Update service spec to ensure correct state
+		service.Spec.Selector = labels
+		service.Spec.Ports = []corev1.ServicePort{{
+			Protocol:   corev1.ProtocolTCP,
+			Port:       sharedKodeTemplateSpec.Port,
+			TargetPort: intstr.FromInt(int(sharedKodeTemplateSpec.Port)),
+		}}
+		return nil
+	})
 	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Info("Creating Service", "Namespace", service.Namespace, "Name", service.Name)
-			if err := r.Create(ctx, service); err != nil {
-				log.Error(err, "Failed to create Service", "Namespace", service.Namespace, "Name", service.Name)
-				return err
-			}
-			log.Info("Service created", "Namespace", service.Namespace, "Name", service.Name)
-		} else {
-			return err
-		}
-	} else if !reflect.DeepEqual(service.Spec, found.Spec) {
-		found.Spec = service.Spec
-		log.Info("Updating Service", "Namespace", found.Namespace, "Name", found.Name)
-		if err := r.Update(ctx, found); err != nil {
-			log.Error(err, "Failed to update Service", "Namespace", found.Namespace, "Name", found.Name)
-			return err
-		}
+		log.Error(err, "Failed to create or update Service", "Namespace", service.Namespace, "Name", service.Name)
+		return err
 	}
-
-	log.Info("Successfully ensured Service", "Namespace", kode.Namespace, "Name", kode.Name)
+	log.Info("Service ensured", "operation", op, "Namespace", service.Namespace, "Name", service.Name)
 	return nil
 }
 
